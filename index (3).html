@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Offline Only</title>
+  <meta name="description" content="Disconnection can be good.">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #fff; color: #000; }
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 16px; line-height: 1.4;
+      display: grid; place-items: center;
+      padding: 16px; overflow: hidden;
+    }
+
+    .dialog {
+      width: min(420px, 100%);
+      background: #f0f0f0;
+      border: 1px solid #8a8a8a;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .22);
+    }
+    .titlebar {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #fff; height: 32px; padding-left: 10px;
+      font-size: 15px; user-select: none;
+    }
+    .close {
+      width: 46px; height: 32px; display: grid; place-items: center;
+      font-size: 18px; color: #000;
+    }
+    .titlebar .close {
+      min-width: 0; padding: 0; border: 0; background: transparent;
+      font-family: inherit; line-height: 1;
+    }
+    .titlebar .close:hover, .titlebar .close:focus-visible {
+      background: #e81123; color: #fff; outline: none;
+    }
+    .titlebar .close:active { background: #f1707a; color: #fff; }
+    .titlebar .close[aria-disabled="true"],
+    .titlebar .close[aria-disabled="true"]:hover,
+    .titlebar .close[aria-disabled="true"]:active { background: transparent; color: #000; border: 0; }
+
+    #patience {
+      position: fixed; left: 50%; top: 50%; z-index: 20;
+      width: min(320px, calc(100% - 32px));
+      transform: translate(calc(-50% + 40px), calc(-50% + 40px));
+    }
+    body.is-offline.closed #patience { display: none; }
+    .dialog-body { padding: 18px 22px 20px; }
+    .dialog p { margin: 0 0 18px; }
+    .actions { display: flex; gap: 22px; justify-content: center; margin-top: 22px; }
+
+    button {
+      font: inherit; font-size: 15px;
+      min-width: 110px; padding: 4px 18px;
+      background: #e1e1e1; color: #000;
+      border: 1px solid #adadad; border-radius: 0;
+      cursor: default;
+    }
+    button:hover { background: #e5f1fb; border-color: #0078d7; }
+    button:active { background: #cce4f7; border-color: #005499; }
+    button:focus-visible { outline: 1px dotted #000; outline-offset: -4px; border-color: #0078d7; }
+    button.default { border: 2px solid #0078d7; padding: 3px 17px; }
+    button:disabled { color: #838383; background: #e1e1e1; border-color: #bfbfbf; }
+    button.falling:disabled { color: #000; border-color: #adadad; }
+    button.default.falling { border: 1px solid #adadad; padding: 4px 18px; }
+    
+    [hidden] { display: none !important; }
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    #welcome, #quiz { display: none; }
+    body.is-offline #gate { display: none; }
+    body.is-offline:not(.begun) #welcome { display: block; }
+    body.is-offline.begun #quiz { display: block; }
+    body:not(.is-offline) .falling { visibility: hidden; }
+    #privilege { display: none; }
+    body.is-offline.begun.privilege #quiz { display: none; }
+    body.is-offline.begun.privilege #privilege { display: block; }
+
+    #privilege-check {
+      appearance: none; -webkit-appearance: none; margin: 0;
+      width: 18px; height: 18px; background: #fff;
+      border: 1px solid #333; border-radius: 0;
+      display: grid; place-items: center;
+    }
+    #privilege-check:hover { border-color: #0078d7; }
+    #privilege-check:focus-visible { outline: 1px dotted #000; outline-offset: 2px; }
+    #privilege-check:checked::after {
+      content: ""; width: 5px; height: 10px; margin-top: -2px;
+      border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    }
+
+    .falling {
+      position: fixed !important; left: 0; top: 0; margin: 0 !important;
+      transform-origin: 50% 50%; will-change: transform; pointer-events: none;
+      z-index: 10;
+    }
+    .ch { display: inline-block; }
+
+    #answer { padding-top: 1.3em; }
+    .edit { position: relative; }
+    .edit del { text-decoration-thickness: 1px; }
+    .edit .ins {
+      position: absolute; left: 0; bottom: 100%;
+      white-space: nowrap; line-height: 1.2;
+    }
+
+    #manifesto { display: none; }
+    body.is-offline.closed { display: block; overflow: auto; padding: 0; }
+    body.is-offline.closed #quiz { display: none; }
+    body.is-offline.closed #manifesto { display: block; }
+    body.closed .falling { opacity: 0; transition: opacity 400ms; }
+    #manifesto {
+      position: relative; min-height: 100vh; margin: 0;
+      padding: 72px max(24px, calc((100% - 632px) / 2)) 120px;
+      font-size: 20px; line-height: 1.55;
+      animation: fade 400ms ease-out;
+    }
+    @keyframes fade { from { opacity: 0; } }
+    #manifesto h1 { font-size: 2rem; font-weight: 400; line-height: 1.2; margin: 0 0 2.5rem; }
+    #manifesto p { margin: 0 0 1.2em; }
+    #manifesto ol { padding-left: 1.4em; margin: 0 0 1.2em; }
+    #manifesto .epigraph { margin: 0 0 3rem; }
+    #manifesto blockquote { margin: 0; }
+    #manifesto blockquote p { line-height: 2.5; margin: 0; }
+    #manifesto figcaption { text-align: right; margin-top: 1.5rem; }
+    #manifesto li { margin-bottom: .4em; }
+
+    .lens {
+      position: absolute; inset: 0; padding: inherit;
+      background: #0078d7; color: #fff;
+      clip-path: circle(0 at -100px -100px);
+      pointer-events: none; user-select: none;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      #manifesto { cursor: none; }
+    }
+    .ch.falling { text-align: center; }
+  </style>
+</head>
+<body>
+ 
+  <div class="dialog" id="gate" role="alertdialog" aria-labelledby="gate-title" aria-describedby="gate-msg">
+    <div class="titlebar"><span id="gate-title">Network</span><button class="close" id="gate-close" type="button" aria-label="Close" aria-disabled="true">✕</button></div>
+    <div class="dialog-body">
+      <p id="gate-msg">You must go offline to view this page. Disconnect to continue.</p>
+      <div class="actions"><button type="button" disabled>Waiting…</button></div>
+    </div>
+  </div>
+
+
+  <div class="dialog" id="welcome" role="alertdialog" aria-labelledby="welcome-title" aria-describedby="welcome-msg">
+    <div class="titlebar"><span id="welcome-title">Network</span><button class="close" id="welcome-close" type="button" aria-label="Close" aria-disabled="true">✕</button></div>
+    <div class="dialog-body">
+      <p id="welcome-msg">Thanks for disconnecting.</p>
+      <div class="actions"><button id="begin" type="button" class="default">Let's begin.</button></div>
+    </div>
+  </div>
+
+
+  <div class="dialog" id="quiz" role="alertdialog" aria-labelledby="quiz-title" aria-describedby="claim">
+    <div class="titlebar"><span id="quiz-title">Sanity Check</span><button class="close" id="quiz-close" type="button" aria-label="Close" aria-disabled="true">✕</button></div>
+    <div class="dialog-body">
+      <p id="claim">Design is good.</p>
+      <p id="true-msg" hidden>Are you sure?</p>
+      <div class="actions" id="sure-row" hidden>
+        <button id="sure-no" type="button" class="default">Not really.</button>
+        <button id="sure-curious" type="button">I'm curious.</button>
+      </div>
+      <div class="actions" id="choices">
+        <button id="btn-true" type="button" class="default">True</button>
+        <button id="btn-false" type="button">False</button>
+      </div>
+      <div class="actions" id="why-row" hidden>
+        <button id="why" type="button" class="default">Why?</button>
+      </div>
+      <p id="answer" hidden>Design <span class="edit"><span class="ins" aria-hidden="true">can be good</span><del>is good</del><span class="visually-hidden"> can be good</span></span>. For that, it must be undesigned and redesigned.</p>
+    </div>
+  </div>
+
+
+  <div class="dialog" id="privilege" role="alertdialog" aria-labelledby="privilege-title" aria-describedby="privilege-msg">
+    <div class="titlebar"><span id="privilege-title">Sanity Check</span><button class="close" id="privilege-close" type="button" aria-label="Close" aria-disabled="true">✕</button></div>
+    <div class="dialog-body">
+      <p id="privilege-msg">Check your privilege.</p>
+      <div class="actions"><input type="checkbox" id="privilege-check" aria-label="Privilege checked"></div>
+    </div>
+  </div>
+
+  <div class="dialog" id="patience" role="alertdialog" aria-labelledby="patience-title" aria-describedby="patience-msg" hidden>
+    <div class="titlebar"><span id="patience-title">Sanity Check</span><button class="close" id="patience-close" type="button" aria-label="Close">✕</button></div>
+    <div class="dialog-body">
+      <p id="patience-msg">Patience is a virtue.</p>
+      <div class="actions"><button id="patience-ok" type="button" class="default">OK</button></div>
+    </div>
+  </div>
+
+  <article id="manifesto">
+    <h1><strong>Radicalizing Design:</strong> A Socialist Design Manifesto</h1>
+    <figure class="epigraph">
+      <blockquote>
+        <p>“The <span class="edit"><span class="ins" aria-hidden="true">designer</span><del>writer</del><span class="visually-hidden"> designer</span></span> must earn money in order to be able to live and to <span class="edit"><span class="ins" aria-hidden="true">design</span><del>write</del><span class="visually-hidden"> design</span></span>, but he must by no means live and <span class="edit"><span class="ins" aria-hidden="true">design</span><del>write</del><span class="visually-hidden"> design</span></span> for the purpose of making money.”</p>
+      </blockquote>
+      <figcaption>– Karl Marx</figcaption>
+    </figure>
+    <ol>
+      <li>Confront, contest, and reconcile your positionality. Design must stand for/on something. It must not stand on the backs of the people your privilege crushes.</li>
+      <li>Resist against the logic of commodification. Design must be for use-value (for users) instead of exchange-value (profit).</li>
+      <li>Indulge in the world of co-production and create a cultural commons full of open-source technology, speculative creations, and hack the system. Design to redesign and un-design.</li>
+      <li>Design must rage against the machine with bravery. It must cultivate virtues of feminism, anti-racism, and anti-capitalism.</li>
+      <li>Your work must be humble. You are of this world, not the world itself. Embrace it with gratitude and learn.</li>
+      <li>Resist the aesthetics of exploitation which communicate and beautify the interests of those in power. Your design must not reproduce and fortify the ideology of capital.</li>
+      <li>Good design does not fall for the politics of pretty. It is design that is equitable, accessible, and emancipatory.</li>
+      <li>Individual recognition does not change the social structure. Liberate your work from superficial identity politics and let it liberate us all instead.</li>
+      <li>Design manifestos must be aggressive and radical. Design manifestos must not rest on edginess, innovation, and high-tech aspirations. Design manifestos must manifest.</li>
+    </ol>
+  </article>
+
+  <noscript>
+    <p>This page needs JavaScript to detect whether you're offline.</p>
+  </noscript>
+
+  <script>
+    const G = 2600;          
+    const MU = 0.5;         
+    const bodies = [];        
+    const statics = [];        
+
+    function makeStatic() {
+      return { x:0, y:0, w:0, h:0, a:0, vx:0, vy:0, av:0, im:0, ii:0 };
+    }
+    const floor = makeStatic(), wallL = makeStatic(), wallR = makeStatic();
+    statics.push(floor, wallL, wallR);
+    function placeWalls() {
+      const W = innerWidth, H = innerHeight, T = 400;
+      Object.assign(floor, { x: W / 2, y: H + T / 2, w: W + 2 * T, h: T });
+      Object.assign(wallL, { x: -T / 2, y: H / 2 - 1000, w: T, h: H + 4000 });
+      Object.assign(wallR, { x: W + T / 2, y: H / 2 - 1000, w: T, h: H + 4000 });
+    }
+    placeWalls();
+    addEventListener("resize", placeWalls);
+
+    function makeBody(el) {
+      const r = el.getBoundingClientRect();
+      const m = r.width * r.height;
+      return {
+        el, w: r.width, h: r.height,
+        x: r.left + r.width / 2, y: r.top + r.height / 2, a: 0,
+        vx: (Math.random() - 0.5) * 80, vy: -Math.random() * 120,
+        av: (Math.random() - 0.5) * 3,
+        im: 1 / m, ii: 12 / (m * (r.width ** 2 + r.height ** 2))
+      };
+    }
+
+    function corners(b) {
+      const c = Math.cos(b.a), s = Math.sin(b.a), hw = b.w / 2, hh = b.h / 2;
+      return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh],[0,-hh],[hw,0],[0,hh],[-hw,0]].map(([lx, ly]) =>
+        ({ x: b.x + lx * c - ly * s, y: b.y + lx * s + ly * c }));
+    }
+    function inside(p, b) {
+      const c = Math.cos(b.a), s = Math.sin(b.a);
+      const dx = p.x - b.x, dy = p.y - b.y;
+      const lx = dx * c + dy * s, ly = -dx * s + dy * c;
+      const px = b.w / 2 - Math.abs(lx), py = b.h / 2 - Math.abs(ly);
+      if (px <= 0 || py <= 0) return null;
+      let nx = 0, ny = 0, d;
+      if (px < py) { nx = Math.sign(lx) || 1; d = px; } else { ny = Math.sign(ly) || 1; d = py; }
+      return { d, n: { x: nx * c - ny * s, y: nx * s + ny * c } };
+    }
+    
+    function collide(A, B, out) {
+      for (const p of corners(A)) {
+        const hit = inside(p, B);
+        if (hit) out.push(contact(A, B, p, hit.n, hit.d));
+      }
+      if (B.im === 0) return; 
+      for (const p of corners(B)) {
+        const hit = inside(p, A);
+        if (hit) out.push(contact(A, B, p, { x: -hit.n.x, y: -hit.n.y }, hit.d));
+      }
+    }
+
+    function relVel(A, B, rax, ray, rbx, rby) {
+      return {
+        x: (A.vx - A.av * ray) - (B.vx - B.av * rby),
+        y: (A.vy + A.av * rax) - (B.vy + B.av * rbx)
+      };
+    }
+
+    function contact(A, B, p, n, d) {
+      const c = { A, B, n, d, rax: p.x - A.x, ray: p.y - A.y, rbx: p.x - B.x, rby: p.y - B.y };
+      const v = relVel(A, B, c.rax, c.ray, c.rbx, c.rby);
+      const vn = v.x * n.x + v.y * n.y;
+      c.bounce = vn < -250 ? -0.25 * vn : 0;  
+      return c;
+    }
+
+    function push(b, ix, iy, rx, ry) {
+      b.vx += ix * b.im; b.vy += iy * b.im;
+      b.av += (rx * iy - ry * ix) * b.ii;
+    }
+
+    function solve(c) {
+      const { A, B, n, rax, ray, rbx, rby } = c;
+      let v = relVel(A, B, rax, ray, rbx, rby);
+      const vn = v.x * n.x + v.y * n.y;
+      if (vn >= c.bounce) return;
+      const ran = rax * n.y - ray * n.x, rbn = rbx * n.y - rby * n.x;
+      const k = A.im + B.im + ran * ran * A.ii + rbn * rbn * B.ii;
+      const j = (c.bounce - vn) / k;
+      push(A,  j * n.x,  j * n.y, rax, ray);
+      push(B, -j * n.x, -j * n.y, rbx, rby);
+
+      // Friction
+      v = relVel(A, B, rax, ray, rbx, rby);
+      const vnn = v.x * n.x + v.y * n.y;
+      let tx = v.x - vnn * n.x, ty = v.y - vnn * n.y;
+      const tl = Math.hypot(tx, ty);
+      if (tl < 1e-6) return;
+      tx /= tl; ty /= tl;
+      const rat = rax * ty - ray * tx, rbt = rbx * ty - rby * tx;
+      const kt = A.im + B.im + rat * rat * A.ii + rbt * rbt * B.ii;
+      let jt = -(v.x * tx + v.y * ty) / kt;
+      jt = Math.max(-MU * j, Math.min(MU * j, jt));
+      push(A,  jt * tx,  jt * ty, rax, ray);
+      push(B, -jt * tx, -jt * ty, rbx, rby);
+    }
+
+    function step(dt) {
+      for (const b of bodies) { b.vy += G * dt; b.av *= 0.995; }
+      const contacts = [];
+      for (let i = 0; i < bodies.length; i++) {
+        for (let j = i + 1; j < bodies.length; j++) collide(bodies[i], bodies[j], contacts);
+        for (const s of statics) collide(bodies[i], s, contacts);
+      }
+      for (let it = 0; it < 10; it++) contacts.forEach(solve);
+      for (const b of bodies) { b.x += b.vx * dt; b.y += b.vy * dt; b.a += b.av * dt; }
+      for (const c of contacts) {        
+        const corr = Math.max(c.d - 0.5, 0) * 0.35 / (c.A.im + c.B.im);
+        c.A.x += c.n.x * corr * c.A.im; c.A.y += c.n.y * corr * c.A.im;
+        c.B.x -= c.n.x * corr * c.B.im; c.B.y -= c.n.y * corr * c.B.im;
+      }
+    }
+
+    function render() {
+      for (const b of bodies) {
+        b.el.style.transform =
+          `translate(${b.x - b.w / 2}px, ${b.y - b.h / 2}px) rotate(${b.a}rad)`;
+      }
+    }
+
+    let running = false, last = 0, elapsed = 0, calm = 0, onSettled = null;
+    function loop(t) {
+      if (!running) return;
+      const dt = Math.min((t - last) / 1000, 1 / 30);
+      last = t;
+      if (isOffline() && dt > 0) {
+        const sub = 3;
+        for (let i = 0; i < sub; i++) step(dt / sub);
+        render();
+        elapsed += dt;
+        const still = bodies.every(b => Math.hypot(b.vx, b.vy) < 25 && Math.abs(b.av) < 0.4);
+        calm = still ? calm + dt : 0;
+        if (onSettled && (calm > 0.4 || elapsed > 3.5)) { const f = onSettled; onSettled = null; f(); }
+      }
+      requestAnimationFrame(loop);
+    }
+
+    
+    function drop(elements, done) {
+      const fresh = elements.map(makeBody);
+      const fonts = elements.map(el => getComputedStyle(el).fontSize);
+      fresh.forEach((b, i) => {
+        b.el.style.fontSize = fonts[i];
+        b.el.style.width = b.w + "px";
+        b.el.style.height = b.h + "px";
+        b.el.style.lineHeight = b.h + "px";
+        b.el.style.padding = "0";
+        b.el.classList.add("falling");
+        document.body.appendChild(b.el);
+      });
+      bodies.push(...fresh);
+      render();
+      onSettled = done;
+      elapsed = 0; calm = 0;
+      if (!running) { running = true; last = performance.now(); requestAnimationFrame(loop); }
+    }
+
+    const claim = document.getElementById("claim");
+    const btnTrue = document.getElementById("btn-true");
+    const btnFalse = document.getElementById("btn-false");
+    const choices = document.getElementById("choices");
+    const trueMsg = document.getElementById("true-msg");
+    const whyRow = document.getElementById("why-row");
+    const why = document.getElementById("why");
+    const answer = document.getElementById("answer");
+
+    claim.innerHTML = claim.textContent.split("")
+      .map(ch => ch === " " ? " " : `<span class="ch">${ch}</span>`).join("");
+
+    const sureRow = document.getElementById("sure-row");
+    const sureNo = document.getElementById("sure-no");
+    function onTrue() {
+      claim.hidden = true;
+      choices.hidden = true;
+      trueMsg.hidden = false;
+      sureRow.hidden = false;
+      sureNo.focus();
+    }
+    function backToQuestion() {
+      trueMsg.hidden = true;
+      sureRow.hidden = true;
+      claim.hidden = false;
+      choices.hidden = false;
+      btnTrue.focus();
+    }
+
+    const privCheck = document.getElementById("privilege-check");
+    sureNo.addEventListener("click", () => {
+      hidePatience();
+      trueMsg.hidden = true;
+      sureRow.hidden = true;
+      privCheck.checked = false;
+      document.body.classList.add("privilege");
+      privCheck.focus();
+    });
+    privCheck.addEventListener("change", () => {
+      if (!privCheck.checked) return;
+      privCheck.disabled = true;
+      setTimeout(collapseQuestion, 350);  
+    });
+  
+    function collapseQuestion() {
+      hidePatience();
+      document.body.classList.remove("privilege");
+      trueMsg.hidden = true;
+      sureRow.hidden = true;
+      claim.hidden = false;
+      choices.hidden = false;
+      btnTrue.disabled = btnFalse.disabled = true;
+      setTimeout(onFalse, 700);   
+    }
+    document.getElementById("sure-curious").addEventListener("click", collapseQuestion);
+
+    function onFalse() {
+      trueMsg.hidden = true;
+      btnTrue.disabled = btnFalse.disabled = true;
+     
+      const body = claim.parentElement;
+      body.style.minHeight = body.offsetHeight + "px";
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) {
+        claim.hidden = true; choices.hidden = true;
+        showWhy();
+        return;
+      }
+      const parts = [...claim.querySelectorAll(".ch"), btnTrue, btnFalse];
+      drop(parts, showWhy);
+    }
+
+    function showWhy() {
+      claim.hidden = true;
+      choices.hidden = true;
+      whyRow.hidden = false;
+      why.focus();
+    }
+
+    
+    const closeBtn = document.getElementById("quiz-close");
+    const patience = document.getElementById("patience");
+    const locked = () => closeBtn.getAttribute("aria-disabled") === "true";
+
+    function showPatience(fromBtn) {
+      if (!patience.hidden) return;
+      const title = fromBtn && fromBtn.closest(".dialog").querySelector(".titlebar span");
+      if (title) document.getElementById("patience-title").textContent = title.textContent;
+      patience.hidden = false;
+      document.getElementById("patience-ok").focus({ preventScroll: true });
+    }
+    function hidePatience() { patience.hidden = true; }
+
+    const welcomeClose = document.getElementById("welcome-close");
+    const gateClose = document.getElementById("gate-close");
+    const privClose = document.getElementById("privilege-close");
+    [gateClose, closeBtn, welcomeClose, privClose].forEach(btn => {
+      const isLocked = () => btn.getAttribute("aria-disabled") === "true";
+      btn.addEventListener("mouseenter", () => { if (isLocked()) showPatience(btn); });
+      if (btn !== closeBtn) btn.addEventListener("click", () => showPatience(btn));
+    });
+
+    document.getElementById("begin").addEventListener("click", () => {
+      hidePatience();
+      document.body.classList.add("begun");
+      btnTrue.focus();
+    });
+    document.getElementById("patience-close").addEventListener("click", hidePatience);
+    document.getElementById("patience-ok").addEventListener("click", hidePatience);
+
+    closeBtn.addEventListener("click", () => {
+      if (locked()) { showPatience(closeBtn); return; }
+      document.body.classList.add("closed");
+      scrollTo(0, 0);
+    });
+
+    const manifesto = document.getElementById("manifesto");
+    const lens = document.createElement("div");
+    lens.className = "lens";
+    lens.setAttribute("aria-hidden", "true");
+    lens.inert = true;
+    [...manifesto.children].forEach(el => lens.appendChild(el.cloneNode(true)));
+    manifesto.appendChild(lens);
+
+    const RADIUS = 24;
+    let mx = -999, my = -999;
+    function moveLens() {
+      const r = manifesto.getBoundingClientRect();
+      lens.style.clipPath = `circle(${RADIUS}px at ${mx - r.left}px ${my - r.top}px)`;
+    }
+    addEventListener("pointermove", e => {
+      if (e.pointerType !== "mouse") return;
+      mx = e.clientX; my = e.clientY; moveLens();
+    });
+    addEventListener("scroll", moveLens, { passive: true });
+    document.documentElement.addEventListener("mouseleave", () => { mx = my = -999; moveLens(); });
+
+    btnTrue.addEventListener("click", onTrue);
+    btnFalse.addEventListener("click", onFalse);
+    why.addEventListener("click", () => {
+      whyRow.hidden = true;
+      answer.hidden = false;
+      closeBtn.removeAttribute("aria-disabled");  
+      hidePatience();
+    });
+
+    function isOffline() { return document.body.classList.contains("is-offline"); }
+
+    function update(e) {
+      const offline = e && e.type ? e.type === "offline" : !navigator.onLine;
+     
+      if (!offline && document.body.classList.contains("closed")) {
+        location.reload();
+        return;
+      }
+      document.body.classList.toggle("is-offline", offline);
+    }
+    addEventListener("online", update);
+    addEventListener("offline", update);
+    update();
+
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
+      addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function (err) {
+          console.error("Service worker registration failed:", err);
+        });
+      });
+    }
+
+  </script>
+</body>
+</html>
